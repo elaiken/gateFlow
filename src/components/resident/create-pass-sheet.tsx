@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +19,11 @@ export interface PassDraft {
   vehicle: string | null;
   startsAt: string;
   expiresAt: string;
+}
+
+interface GeneratedPass extends PassDraft {
+  publicToken: string;
+  backupPin: string;
 }
 
 interface CreatePassSheetProps {
@@ -32,7 +38,7 @@ interface PassTypeOption {
   icon: ReactNode;
 }
 
-type SheetStep = "details" | "review";
+type SheetStep = "details" | "review" | "generated";
 
 const passTypeOptions: PassTypeOption[] = [
   {
@@ -115,6 +121,59 @@ function ShieldIcon() {
         strokeLinejoin="round"
         d="m9 12 2 2 4-4"
       />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-7"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="2.5"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m5 12 4 4L19 6"
+      />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path strokeLinecap="round" d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" />
     </svg>
   );
 }
@@ -242,6 +301,22 @@ function getDefaultTimes() {
   };
 }
 
+function createOpaqueToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+
+  return Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function createBackupPin() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+
+  return String(100000 + (values[0] % 900000));
+}
+
 function formatDateTime(value: string) {
   const date = new Date(value);
 
@@ -299,6 +374,9 @@ export function CreatePassSheet({
   );
   const [formError, setFormError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedPass, setGeneratedPass] =
+    useState<GeneratedPass | null>(null);
+  const [copiedMessage, setCopiedMessage] = useState("");
 
   const selectedPassType =
     passTypeOptions.find((option) => option.value === passType) ??
@@ -314,7 +392,7 @@ export function CreatePassSheet({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onClose();
+        handleClose();
       }
     }
 
@@ -324,7 +402,21 @@ export function CreatePassSheet({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onClose]);
+  });
+
+  function resetForm() {
+    const defaultTimes = getDefaultTimes();
+
+    setStep("details");
+    setPassType("delivery");
+    setVisitorName("");
+    setVehicle("");
+    setStartsAt(defaultTimes.startsAt);
+    setExpiresAt(defaultTimes.expiresAt);
+    setFormError("");
+    setGeneratedPass(null);
+    setCopiedMessage("");
+  }
 
   function validateForm() {
     setFormError("");
@@ -373,34 +465,89 @@ export function CreatePassSheet({
   }
 
   function handleClose() {
-    setStep("details");
-    setFormError("");
+    resetForm();
     onClose();
   }
 
   async function handleGeneratePass() {
     setIsGenerating(true);
 
-    const passDraft: PassDraft = {
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 650);
+    });
+
+    const pass: GeneratedPass = {
       passType,
       visitorName: visitorName.trim(),
       vehicle: vehicle.trim() || null,
       startsAt,
       expiresAt,
+      publicToken: createOpaqueToken(),
+      backupPin: createBackupPin(),
     };
 
-    console.log("GateFlow pass draft:", passDraft);
-
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 700);
-    });
-
+    setGeneratedPass(pass);
     setIsGenerating(false);
+    setStep("generated");
+  }
+
+  async function handleCopyLink() {
+    if (!generatedPass) {
+      return;
+    }
+
+    const passUrl = `${window.location.origin}/pass/${generatedPass.publicToken}`;
+
+    try {
+      await navigator.clipboard.writeText(passUrl);
+      setCopiedMessage("Pass link copied");
+    } catch {
+      setCopiedMessage("Unable to copy link");
+    }
+  }
+
+  async function handleShare() {
+    if (!generatedPass) {
+      return;
+    }
+
+    const passUrl = `${window.location.origin}/pass/${generatedPass.publicToken}`;
+    const shareText = [
+      `GateFlow temporary ${selectedPassType.label.toLowerCase()} pass`,
+      `Visitor: ${generatedPass.visitorName}`,
+      `Backup PIN: ${generatedPass.backupPin}`,
+      passUrl,
+    ].join("\n");
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "GateFlow temporary pass",
+          text: shareText,
+        });
+
+        setCopiedMessage("Pass shared");
+        return;
+      } catch {
+        return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopiedMessage("Pass details copied");
+    } catch {
+      setCopiedMessage("Unable to share pass");
+    }
   }
 
   if (!open) {
     return null;
   }
+
+  const qrValue = generatedPass
+    ? `${window.location.origin}/pass/${generatedPass.publicToken}`
+    : "";
 
   return (
     <div
@@ -448,7 +595,9 @@ export function CreatePassSheet({
               >
                 {step === "details"
                   ? "Create temporary pass"
-                  : "Review pass details"}
+                  : step === "review"
+                    ? "Review pass details"
+                    : "Pass created"}
               </h2>
 
               <p
@@ -457,7 +606,9 @@ export function CreatePassSheet({
               >
                 {step === "details"
                   ? "Choose who needs access and how long their pass should remain valid."
-                  : "Confirm the information before generating secure temporary access."}
+                  : step === "review"
+                    ? "Confirm the information before generating secure temporary access."
+                    : "Share this QR code or backup PIN with the expected visitor."}
               </p>
             </div>
           </div>
@@ -644,7 +795,7 @@ export function CreatePassSheet({
               </div>
             </footer>
           </form>
-        ) : (
+        ) : step === "review" ? (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-7">
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
@@ -694,11 +845,6 @@ export function CreatePassSheet({
                   />
                 </dl>
               </div>
-
-              <p className="mt-5 text-center text-sm leading-6 text-slate-500">
-                After generation, GateFlow will create a temporary QR code and
-                backup entry PIN.
-              </p>
             </div>
 
             <footer className="border-t border-slate-200 bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-5">
@@ -725,7 +871,106 @@ export function CreatePassSheet({
               </div>
             </footer>
           </div>
-        )}
+        ) : generatedPass ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-7">
+              <div className="text-center">
+                <div className="mx-auto grid size-14 place-items-center rounded-full bg-emerald-100 text-emerald-700">
+                  <CheckIcon />
+                </div>
+
+                <p className="mt-3 text-lg font-bold text-slate-950">
+                  Access pass ready
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {generatedPass.visitorName} · {selectedPassType.label}
+                </p>
+              </div>
+
+              <div className="mx-auto mt-6 max-w-sm rounded-3xl border border-slate-200 bg-white p-5 text-center shadow-sm">
+                <div className="mx-auto w-fit rounded-2xl border border-slate-200 bg-white p-4">
+                  <QRCodeSVG
+                    value={qrValue}
+                    size={220}
+                    level="H"
+                    marginSize={1}
+                    title="GateFlow temporary access QR code"
+                  />
+                </div>
+
+                <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Backup entry PIN
+                </p>
+
+                <p className="mt-2 font-mono text-3xl font-black tracking-[0.3em] text-slate-950">
+                  {generatedPass.backupPin}
+                </p>
+
+                <p className="mt-4 text-sm font-semibold text-slate-950">
+                  Valid until {formatDateTime(generatedPass.expiresAt)}
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Present this code to the guard. This demonstration pass has
+                  not yet been saved to the database.
+                </p>
+              </div>
+
+              {copiedMessage ? (
+                <p
+                  role="status"
+                  className="mt-4 text-center text-sm font-semibold text-emerald-700"
+                >
+                  {copiedMessage}
+                </p>
+              ) : null}
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleCopyLink}
+                  fullWidth
+                >
+                  <CopyIcon />
+                  Copy pass link
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleShare}
+                  fullWidth
+                >
+                  <ShareIcon />
+                  Share pass
+                </Button>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-bold text-amber-950">
+                  Demo security note
+                </p>
+
+                <p className="mt-1 text-sm leading-6 text-amber-900">
+                  The QR contains only a random public token. Visitor details,
+                  resident information, and permanent gate credentials are not
+                  embedded inside the code.
+                </p>
+              </div>
+            </div>
+
+            <footer className="border-t border-slate-200 bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-5">
+              <Button
+                type="button"
+                onClick={handleClose}
+                fullWidth
+              >
+                Done
+              </Button>
+            </footer>
+          </div>
+        ) : null}
       </section>
     </div>
   );
