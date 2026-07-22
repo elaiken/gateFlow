@@ -12,20 +12,18 @@ import {
 const demoRoles: UserRole[] = [
   USER_ROLES.RESIDENT,
   USER_ROLES.SECURITY_GUARD,
-  USER_ROLES.HEAD_OF_SECURITY,
   USER_ROLES.COMMUNITY_MANAGER,
-  USER_ROLES.SUPER_ADMIN,
+  USER_ROLES.GATEFLOW_ADMIN,
 ];
 
 const roleIcons: Record<UserRole, string> = {
   resident: "🏠",
-  security_guard: "👮",
-  head_of_security: "🛡️",
+  security_guard: "🛡️",
   community_manager: "🏢",
-  super_admin: "⚙️",
+  gateflow_admin: "⚙️",
 };
 
-export default function SelectRolePage() {
+export default function SelectRolesPage() {
   const router = useRouter();
 
   function handleRoleSelection(role: UserRole) {
@@ -37,7 +35,7 @@ export default function SelectRolePage() {
     <main className="min-h-screen bg-slate-100 px-4 py-10 text-slate-950 sm:px-6">
       <div className="mx-auto max-w-5xl">
         <header className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-2xl text-white shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-xl font-bold text-white shadow-sm">
             GF
           </div>
 
@@ -50,12 +48,12 @@ export default function SelectRolePage() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-            Explore GateFlow from the perspective of a resident, guard,
-            security leader, community manager, or platform administrator.
+            Explore GateFlow from the perspective of a resident, security
+            guard, community manager, or GateFlow administrator.
           </p>
         </header>
 
-        <section className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mt-10 grid gap-4 sm:grid-cols-2">
           {demoRoles.map((role) => (
             <button
               key={role}
@@ -64,7 +62,7 @@ export default function SelectRolePage() {
               className="group rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-emerald-500/20"
             >
               <div className="flex items-start justify-between gap-4">
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-2xl transition group-hover:bg-slate-950">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-2xl transition group-hover:bg-slate-200">
                   {roleIcons[role]}
                 </span>
 
@@ -91,7 +89,7 @@ export default function SelectRolePage() {
         <footer className="mt-8 text-center">
           <p className="text-xs leading-5 text-slate-500">
             Demo role selection is for presentation purposes. Production users
-            will receive permissions from their verified account.
+            will receive access based on their verified GateFlow account.
           </p>
         </footer>
       </div>
